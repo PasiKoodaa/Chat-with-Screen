@@ -57,7 +57,7 @@ You can install Chat with Screen using either conda or pip. Choose the method th
 
 1. Clone the repository:
    ```
-   git clone https://github.com/PasiKoodaa/Chat-with-Screen/new/main
+   git clone https://github.com/PasiKoodaa/Chat-with-Screen
    cd chat-with-screen
    ```
 
