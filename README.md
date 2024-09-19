@@ -82,16 +82,19 @@ You can install Chat with Screen using either conda or pip. Choose the method th
 
 1. Ensure that your KoboldCPP server is running and accessible at the URL specified in the `KOBOLDCPP_URL` variable in the script.
 
-2. Run the application:
+   ![365400175-c8781ff4-b7c5-47a4-b72e-84da4a5e3ea2](https://github.com/user-attachments/assets/cc67f01b-b45f-47ea-95ff-b52e68eda563)
+
+
+3. Run the application:
    ```
    python main.py
    ```
 
-3. Use the interface to capture screenshots, analyze them, and chat with the AI about the screen content.
+4. Use the interface to capture screenshots, analyze them, and chat with the AI about the screen content.
 
-4. Right-click on the overlay to access additional options such as selecting a region or resizing the overlay.
+5. Right-click on the overlay to access additional options such as selecting a region or resizing the overlay.
 
-5. Click the 'X' button in the top-right corner or use the right-click menu to close the application.
+6. Click the 'X' button in the top-right corner or use the right-click menu to close the application.
 
 ## Configuration
 
