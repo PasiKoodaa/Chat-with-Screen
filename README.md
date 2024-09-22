@@ -1,6 +1,6 @@
 # Chat with Screen
 
-Chat with Screen is a Python application that allows users to capture screenshots, analyze them using a KoboldCPP server, and engage in a chat-like interaction based on the analysis. The application features a translucent overlay interface for easy interaction with the underlying desktop.
+Chat with Screen is a Python application that allows users to capture screenshots, analyze them using a KoboldCPP server, and engage in a chat-like interaction based on the analysis. The application features a translucent overlay interface for easy interaction with the underlying desktop. Currently only Windows compatible.
 
 
 
