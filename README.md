@@ -8,6 +8,10 @@ https://github.com/user-attachments/assets/f1f456e2-94f7-4e64-bc79-30235a99d99a
 
 
 
+https://github.com/user-attachments/assets/2f16913b-2063-4039-8b53-4f7d8fe296e1
+
+
+
 ## Features
 
 - Capture full screen or selected region screenshots
@@ -16,6 +20,7 @@ https://github.com/user-attachments/assets/f1f456e2-94f7-4e64-bc79-30235a99d99a
 - Translucent overlay for seamless desktop integration
 - Resizable overlay window
 - Right-click context menu for quick actions
+- Chat history memory option for contextual conversations
 
 ## Requirements
 
@@ -84,21 +89,30 @@ You can install Chat with Screen using either conda or pip. Choose the method th
 
    ![365400175-c8781ff4-b7c5-47a4-b72e-84da4a5e3ea2](https://github.com/user-attachments/assets/cc67f01b-b45f-47ea-95ff-b52e68eda563)
 
-
-3. Run the application:
+2. Run the application:
    ```
    python main.py
    ```
-
-4. Use the interface to capture screenshots, analyze them, and chat with the AI about the screen content.
-
+3. Use the interface to capture screenshots, analyze them, and chat with the AI about the screen content.
+4. Toggle the chat history memory on or off using the "Memory" button. When enabled, the AI will consider the last four question-answer pairs for context.
 5. Right-click on the overlay to access additional options such as selecting a region or resizing the overlay.
-
 6. Click the 'X' button in the top-right corner or use the right-click menu to close the application.
+
 
 ## Configuration
 
 You can modify the `KOBOLDCPP_URL` variable in the script to point to your KoboldCPP server if it's running on a different address or port.
+
+## Chat History Memory
+
+The chat history memory feature allows the AI to maintain context across multiple interactions. When enabled:
+
+- The last four question-answer pairs are stored in memory.
+- These pairs are included in the context for new questions, allowing for more coherent and contextual conversations.
+- You can toggle this feature on or off at any time using the "Memory" button in the interface.
+- When disabled, the chat history is cleared, and each question is treated independently.
+
+This feature is particularly useful for in-depth discussions or multi-step analyses of screen content.
 
 
 
