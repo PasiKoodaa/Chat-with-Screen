@@ -109,6 +109,8 @@ class ChatOverlay(QMainWindow):
         self.selecting_region = False
         self.start_point = None
         self.end_point = None
+        self.memory_enabled = False
+        self.chat_history = []
 
         self.screenshot_thread = QThread()
         self.screenshot_worker = ScreenshotWorker(self)
@@ -178,7 +180,23 @@ class ChatOverlay(QMainWindow):
         self.waiting_indicator.setStyleSheet("color: yellow; font-weight: bold;")
         layout.addWidget(self.waiting_indicator)
 
+        # Add memory toggle button
+        self.memory_toggle = QPushButton("Memory: Off", self)
+        self.memory_toggle.setStyleSheet("background-color: rgba(255, 59, 48, 0.7); color: white; border: none; border-radius: 5px; padding: 5px;")
+        self.memory_toggle.clicked.connect(self.toggle_memory)
+        button_layout.addWidget(self.memory_toggle)
+
         self.show()
+
+    def toggle_memory(self):
+        self.memory_enabled = not self.memory_enabled
+        if self.memory_enabled:
+            self.memory_toggle.setText("Memory: On")
+            self.memory_toggle.setStyleSheet("background-color: rgba(52, 199, 89, 0.7); color: white; border: none; border-radius: 5px; padding: 5px;")
+        else:
+            self.memory_toggle.setText("Memory: Off")
+            self.memory_toggle.setStyleSheet("background-color: rgba(255, 59, 48, 0.7); color: white; border: none; border-radius: 5px; padding: 5px;")
+            self.chat_history.clear()
 
     def send_message(self):
         message = self.input_field.text()
@@ -186,7 +204,14 @@ class ChatOverlay(QMainWindow):
             self.chat_display.append(f"<span style='color: #58D68D;'>You:</span> {message}")
             self.input_field.clear()
             self.waiting_indicator.setText("Waiting for AI response...")
+            
+            if self.memory_enabled:
+                self.chat_history.append(f"User: {message}")
+                if len(self.chat_history) > 8:  # Keep only the last 4 pairs
+                    self.chat_history = self.chat_history[-8:]
+            
             self.take_screenshot()
+
 
     def take_screenshot(self):
         self.hide()
@@ -199,8 +224,21 @@ class ChatOverlay(QMainWindow):
     @pyqtSlot(object)
     def process_screenshot(self, image):
         self.current_image = image
-        response = analyze_image_with_koboldcpp(image, self.chat_display.toPlainText().split('\n')[-1])
+        
+        if self.memory_enabled:
+            context = "\n".join(self.chat_history)
+            prompt = context + "\n" + self.chat_display.toPlainText().split('\n')[-1]
+        else:
+            prompt = self.chat_display.toPlainText().split('\n')[-1]
+        
+        response = analyze_image_with_koboldcpp(image, prompt)
         self.chat_display.append(f"<span style='color: #5DADE2;'>AI:</span> {response}")
+        
+        if self.memory_enabled:
+            self.chat_history.append(f"AI: {response}")
+            if len(self.chat_history) > 8:  # Keep only the last 4 pairs
+                self.chat_history = self.chat_history[-8:]
+        
         self.waiting_indicator.clear()
 
     def select_region(self):
