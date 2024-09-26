@@ -55,8 +55,10 @@ You can install Chat with Screen using either conda or pip. Choose the method th
    pip install -r requirements.txt
 
    ```
-5. Install torch if you use Transformers-models https://pytorch.org/get-started/locally/
- 
+5. Install torch if you use Transformers-models
+   ```
+   https://pytorch.org/get-started/locally/
+   ```
 
 ### Using pip
 
@@ -83,8 +85,10 @@ You can install Chat with Screen using either conda or pip. Choose the method th
    pip install -r requirements.txt
    ```
 5. Install torch if you use Transformers-models
+   ```
    https://pytorch.org/get-started/locally/
-
+   ```
+   
 ## Usage
 
 1. Ensure that your KoboldCPP server is running and accessible at the URL specified in the `KOBOLDCPP_URL` variable in the script.
