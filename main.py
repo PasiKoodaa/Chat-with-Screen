@@ -27,7 +27,7 @@ def resize_image(image, backend):
     if backend == "koboldcpp":
         MAX_PIXELS = 1_800_000
     else:
-        MAX_PIXELS = 350_000 # for Transformers-model
+        MAX_PIXELS = 350_000 # for Transformers-models, around 300_000 uses under 12GB VRAM with Molmo-7B
     print(backend)
     print("MAX_PIXELS is set to:",(MAX_PIXELS))
     current_pixels = image.width * image.height
@@ -83,7 +83,7 @@ class TransformersModelWorker(QObject):
     def load_model(self):
         try:
             arguments = {"device_map": "auto", "torch_dtype": "auto", "trust_remote_code": True}
-            self.processor = AutoProcessor.from_pretrained("allenai/Molmo-7B-O-0924", **arguments)
+            self.processor = AutoProcessor.from_pretrained("allenai/Molmo-7B-D-0924", **arguments)
             
             quantization_config = BitsAndBytesConfig(
                 load_in_4bit=True,
@@ -92,7 +92,7 @@ class TransformersModelWorker(QObject):
             )
             arguments["quantization_config"] = quantization_config
             
-            self.model = AutoModelForCausalLM.from_pretrained("allenai/Molmo-7B-O-0924", **arguments)
+            self.model = AutoModelForCausalLM.from_pretrained("allenai/Molmo-7B-D-0924", **arguments)
             self.model_loaded.emit()
 
         except Exception as e:
