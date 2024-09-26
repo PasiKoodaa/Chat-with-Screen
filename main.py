@@ -23,14 +23,21 @@ KOBOLDCPP_URL = "http://localhost:5001/api/v1/generate"
 logging.basicConfig(filename='app.log', level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
-def resize_image(image):
-    MAX_PIXELS = 1_800_000
+def resize_image(image, backend):
+    if backend == "koboldcpp":
+        MAX_PIXELS = 1_800_000
+    else:
+        MAX_PIXELS = 350_000 # for Transformers-model
+    print(backend)
+    print("MAX_PIXELS is set to:",(MAX_PIXELS))
     current_pixels = image.width * image.height
     if current_pixels <= MAX_PIXELS:
         return image
     scale_factor = (MAX_PIXELS / current_pixels) ** 0.5
     new_width = int(image.width * scale_factor)
     new_height = int(image.height * scale_factor)
+    print("screenshot orginal size is",(image.height),"*",(image.width), "=", (image.height * image.width), "pixels")
+    print("screenshot new size is",(new_height),"*",(new_width), "=", (new_height*new_width), "pixels")
     return image.resize((new_width, new_height), Image.LANCZOS)
 
 def encode_image_to_base64(image):
@@ -87,6 +94,7 @@ class TransformersModelWorker(QObject):
             
             self.model = AutoModelForCausalLM.from_pretrained("allenai/Molmo-7B-O-0924", **arguments)
             self.model_loaded.emit()
+
         except Exception as e:
             self.error_occurred.emit(f"Error loading model: {str(e)}")
 
@@ -134,7 +142,11 @@ class ScreenshotWorker(QObject):
         else:
             screenshot = ImageGrab.grab()
         
-        resized_image = resize_image(screenshot)
+
+        # resized_image = resize_image(screenshot)
+        # Resize image based on backend
+        resized_image = resize_image(screenshot, self.overlay.backend)
+
         self.screenshot_taken.emit(resized_image)
 
 class TransparentWidget(QWidget):
