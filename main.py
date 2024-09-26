@@ -6,9 +6,16 @@ import requests
 import base64
 import logging
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout, QWidget,
-                             QHBoxLayout, QInputDialog, QTextEdit, QLineEdit, QSizePolicy, QMenu)
+                             QHBoxLayout, QInputDialog, QTextEdit, QLineEdit, QSizePolicy, QMenu, QProgressDialog, QComboBox)
 from PyQt5.QtCore import Qt, QRect, QThread, QObject, pyqtSignal, pyqtSlot, QTimer
 from PyQt5.QtGui import QFont, QPainter, QPen, QPixmap, QColor, QPainterPath
+
+from transformers import (
+    AutoModelForCausalLM,
+    AutoProcessor,
+    GenerationConfig,
+    BitsAndBytesConfig,
+)
 
 # KoboldCPP server settings
 KOBOLDCPP_URL = "http://localhost:5001/api/v1/generate"
@@ -30,6 +37,7 @@ def encode_image_to_base64(image):
     buffered = io.BytesIO()
     image.save(buffered, format="JPEG")
     return base64.b64encode(buffered.getvalue()).decode('utf-8')
+
 
 def analyze_image_with_koboldcpp(image, prompt):
     image_base64 = encode_image_to_base64(image)
@@ -54,6 +62,74 @@ def analyze_image_with_koboldcpp(image, prompt):
     except requests.RequestException as e:
         print(f"Error communicating with KoboldCPP: {e}")
         return "Unable to analyze image at this time."
+class TransformersModel:
+    def __init__(self):
+        arguments = {"device_map": "auto", "torch_dtype": "auto", "trust_remote_code": True}
+        self.processor = AutoProcessor.from_pretrained("allenai/Molmo-7B-O-0924", **arguments)
+        
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="fp4",
+            bnb_4bit_use_double_quant=False,
+        )
+        arguments["quantization_config"] = quantization_config
+        
+        self.model = AutoModelForCausalLM.from_pretrained("allenai/Molmo-7B-O-0924", **arguments)
+
+    def analyze_image(self, image, prompt):
+        inputs = self.processor.process(images=[image], text=prompt)
+        inputs = {k: v.to(self.model.device).unsqueeze(0) for k, v in inputs.items()}
+        
+        output = self.model.generate_from_batch(
+            inputs,
+            GenerationConfig(max_new_tokens=200, stop_strings="<|endoftext|>"),
+            tokenizer=self.processor.tokenizer,
+        )
+        
+        generated_tokens = output[0, inputs["input_ids"].size(1):]
+        generated_text = self.processor.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+        
+        return generated_text
+    
+class TransformersModelWorker(QObject):
+    model_loaded = pyqtSignal()
+    analysis_complete = pyqtSignal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.model = None
+        self.processor = None
+
+    @pyqtSlot()
+    def load_model(self):
+        arguments = {"device_map": "auto", "torch_dtype": "auto", "trust_remote_code": True}
+        self.processor = AutoProcessor.from_pretrained("allenai/Molmo-7B-O-0924", **arguments)
+        
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="fp4",
+            bnb_4bit_use_double_quant=False,
+        )
+        arguments["quantization_config"] = quantization_config
+        
+        self.model = AutoModelForCausalLM.from_pretrained("allenai/Molmo-7B-O-0924", **arguments)
+        self.model_loaded.emit()
+
+    @pyqtSlot(object, str)
+    def analyze_image(self, image, prompt):
+        inputs = self.processor.process(images=[image], text=prompt)
+        inputs = {k: v.to(self.model.device).unsqueeze(0) for k, v in inputs.items()}
+        
+        output = self.model.generate_from_batch(
+            inputs,
+            GenerationConfig(max_new_tokens=200, stop_strings="<|endoftext|>"),
+            tokenizer=self.processor.tokenizer,
+        )
+        
+        generated_tokens = output[0, inputs["input_ids"].size(1):]
+        generated_text = self.processor.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+        
+        self.analysis_complete.emit(generated_text)
 
 class ScreenshotWorker(QObject):
     screenshot_taken = pyqtSignal(object)
@@ -111,12 +187,20 @@ class ChatOverlay(QMainWindow):
         self.end_point = None
         self.memory_enabled = False
         self.chat_history = []
+        self.backend = "koboldcpp"
 
         self.screenshot_thread = QThread()
         self.screenshot_worker = ScreenshotWorker(self)
         self.screenshot_worker.moveToThread(self.screenshot_thread)
         self.screenshot_worker.screenshot_taken.connect(self.process_screenshot)
         self.screenshot_thread.start()
+
+        self.transformers_thread = QThread()
+        self.transformers_worker = TransformersModelWorker()
+        self.transformers_worker.moveToThread(self.transformers_thread)
+        self.transformers_worker.model_loaded.connect(self.on_model_loaded)
+        self.transformers_worker.analysis_complete.connect(self.on_analysis_complete)
+        self.transformers_thread.start()
 
     def initUI(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
@@ -186,7 +270,22 @@ class ChatOverlay(QMainWindow):
         self.memory_toggle.clicked.connect(self.toggle_memory)
         button_layout.addWidget(self.memory_toggle)
 
+        # Add backend selection dropdown
+        self.backend_selector = QComboBox(self)
+        self.backend_selector.addItems(["KoboldCPP", "Transformers"])
+        self.backend_selector.currentTextChanged.connect(self.change_backend)
+        layout.addWidget(self.backend_selector)
+
         self.show()
+
+    def select_model(self):
+        model, ok = QInputDialog.getItem(self, "Select Model", "Choose a model:", ["KoboldCPP", "Transformers"], 0, False)
+        if ok:
+            if model == "KoboldCPP":
+                self.current_model = "koboldcpp"
+            else:
+                self.current_model = "transformers"
+
 
     def toggle_memory(self):
         self.memory_enabled = not self.memory_enabled
@@ -197,6 +296,28 @@ class ChatOverlay(QMainWindow):
             self.memory_toggle.setText("Memory: Off")
             self.memory_toggle.setStyleSheet("background-color: rgba(255, 59, 48, 0.7); color: white; border: none; border-radius: 5px; padding: 5px;")
             self.chat_history.clear()
+            
+    def change_backend(self, backend):
+        if backend == "KoboldCPP":
+            self.backend = "koboldcpp"
+        else:
+            self.backend = "transformers"
+            if not self.transformers_worker.model:
+                self.show_loading_dialog("Loading Transformers model...")
+                QTimer.singleShot(100, self.transformers_worker.load_model)
+
+
+
+    def show_loading_dialog(self, message):
+        self.progress_dialog = QProgressDialog(message, None, 0, 0, self)
+        self.progress_dialog.setWindowModality(Qt.WindowModal)
+        self.progress_dialog.setWindowTitle("Please Wait")
+        self.progress_dialog.setCancelButton(None)
+        self.progress_dialog.show()
+
+    @pyqtSlot()
+    def on_model_loaded(self):
+        self.progress_dialog.close()
 
     def send_message(self):
         message = self.input_field.text()
@@ -231,7 +352,20 @@ class ChatOverlay(QMainWindow):
         else:
             prompt = self.chat_display.toPlainText().split('\n')[-1]
         
-        response = analyze_image_with_koboldcpp(image, prompt)
+        if self.backend == "koboldcpp":
+            response = analyze_image_with_koboldcpp(image, prompt)
+            self.on_analysis_complete(response)
+        else:
+            self.show_loading_dialog("Analyzing image...")
+            QTimer.singleShot(100, lambda: self.transformers_worker.analyze_image(image, prompt))
+        
+        self.waiting_indicator.clear()
+
+    @pyqtSlot(str)
+    def on_analysis_complete(self, response):
+        if hasattr(self, 'progress_dialog'):
+            self.progress_dialog.close()
+        
         self.chat_display.append(f"<span style='color: #5DADE2;'>AI:</span> {response}")
         
         if self.memory_enabled:
