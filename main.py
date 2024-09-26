@@ -6,7 +6,7 @@ import requests
 import base64
 import logging
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout, QWidget,
-                             QHBoxLayout, QInputDialog, QTextEdit, QLineEdit, QSizePolicy, QMenu, QProgressDialog, QComboBox)
+                             QHBoxLayout, QInputDialog, QTextEdit, QLineEdit, QSizePolicy, QMenu, QComboBox)
 from PyQt5.QtCore import Qt, QRect, QThread, QObject, pyqtSignal, pyqtSlot, QTimer
 from PyQt5.QtGui import QFont, QPainter, QPen, QPixmap, QColor, QPainterPath
 
@@ -38,7 +38,6 @@ def encode_image_to_base64(image):
     image.save(buffered, format="JPEG")
     return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-
 def analyze_image_with_koboldcpp(image, prompt):
     image_base64 = encode_image_to_base64(image)
     
@@ -51,7 +50,6 @@ def analyze_image_with_koboldcpp(image, prompt):
         "images": [image_base64],
         "prompt": f"\n(Attached Image)\n<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n{prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
         "stop_sequence": ["<|eot_id|><|start_header_id|>user<|end_header_id|>", "<|eot_id|><|start_header_id|>assistant<|end_header_id|>"]
-
     }
     
     try:
@@ -62,38 +60,11 @@ def analyze_image_with_koboldcpp(image, prompt):
     except requests.RequestException as e:
         print(f"Error communicating with KoboldCPP: {e}")
         return "Unable to analyze image at this time."
-class TransformersModel:
-    def __init__(self):
-        arguments = {"device_map": "auto", "torch_dtype": "auto", "trust_remote_code": True}
-        self.processor = AutoProcessor.from_pretrained("allenai/Molmo-7B-O-0924", **arguments)
-        
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="fp4",
-            bnb_4bit_use_double_quant=False,
-        )
-        arguments["quantization_config"] = quantization_config
-        
-        self.model = AutoModelForCausalLM.from_pretrained("allenai/Molmo-7B-O-0924", **arguments)
 
-    def analyze_image(self, image, prompt):
-        inputs = self.processor.process(images=[image], text=prompt)
-        inputs = {k: v.to(self.model.device).unsqueeze(0) for k, v in inputs.items()}
-        
-        output = self.model.generate_from_batch(
-            inputs,
-            GenerationConfig(max_new_tokens=200, stop_strings="<|endoftext|>"),
-            tokenizer=self.processor.tokenizer,
-        )
-        
-        generated_tokens = output[0, inputs["input_ids"].size(1):]
-        generated_text = self.processor.tokenizer.decode(generated_tokens, skip_special_tokens=True)
-        
-        return generated_text
-    
 class TransformersModelWorker(QObject):
     model_loaded = pyqtSignal()
     analysis_complete = pyqtSignal(str)
+    error_occurred = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
@@ -102,34 +73,44 @@ class TransformersModelWorker(QObject):
 
     @pyqtSlot()
     def load_model(self):
-        arguments = {"device_map": "auto", "torch_dtype": "auto", "trust_remote_code": True}
-        self.processor = AutoProcessor.from_pretrained("allenai/Molmo-7B-O-0924", **arguments)
-        
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="fp4",
-            bnb_4bit_use_double_quant=False,
-        )
-        arguments["quantization_config"] = quantization_config
-        
-        self.model = AutoModelForCausalLM.from_pretrained("allenai/Molmo-7B-O-0924", **arguments)
-        self.model_loaded.emit()
+        try:
+            arguments = {"device_map": "auto", "torch_dtype": "auto", "trust_remote_code": True}
+            self.processor = AutoProcessor.from_pretrained("allenai/Molmo-7B-O-0924", **arguments)
+            
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="fp4",
+                bnb_4bit_use_double_quant=True,
+            )
+            arguments["quantization_config"] = quantization_config
+            
+            self.model = AutoModelForCausalLM.from_pretrained("allenai/Molmo-7B-O-0924", **arguments)
+            self.model_loaded.emit()
+        except Exception as e:
+            self.error_occurred.emit(f"Error loading model: {str(e)}")
 
     @pyqtSlot(object, str)
     def analyze_image(self, image, prompt):
-        inputs = self.processor.process(images=[image], text=prompt)
-        inputs = {k: v.to(self.model.device).unsqueeze(0) for k, v in inputs.items()}
-        
-        output = self.model.generate_from_batch(
-            inputs,
-            GenerationConfig(max_new_tokens=200, stop_strings="<|endoftext|>"),
-            tokenizer=self.processor.tokenizer,
-        )
-        
-        generated_tokens = output[0, inputs["input_ids"].size(1):]
-        generated_text = self.processor.tokenizer.decode(generated_tokens, skip_special_tokens=True)
-        
-        self.analysis_complete.emit(generated_text)
+        if self.model is None or self.processor is None:
+            self.error_occurred.emit("Model not loaded. Please wait for the model to load and try again.")
+            return
+
+        try:
+            inputs = self.processor.process(images=[image], text=prompt)
+            inputs = {k: v.to(self.model.device).unsqueeze(0) for k, v in inputs.items()}
+            
+            output = self.model.generate_from_batch(
+                inputs,
+                GenerationConfig(max_new_tokens=200, stop_strings="<|endoftext|>"),
+                tokenizer=self.processor.tokenizer,
+            )
+            
+            generated_tokens = output[0, inputs["input_ids"].size(1):]
+            generated_text = self.processor.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+            
+            self.analysis_complete.emit(generated_text)
+        except Exception as e:
+            self.error_occurred.emit(f"Error analyzing image: {str(e)}")
 
 class ScreenshotWorker(QObject):
     screenshot_taken = pyqtSignal(object)
@@ -174,7 +155,6 @@ class TransparentWidget(QWidget):
         painter.setPen(QPen(QColor(200, 200, 200), 1))
         painter.drawPath(path)
 
-
 class ChatOverlay(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -188,6 +168,7 @@ class ChatOverlay(QMainWindow):
         self.memory_enabled = False
         self.chat_history = []
         self.backend = "koboldcpp"
+        self.model_loaded = False
 
         self.screenshot_thread = QThread()
         self.screenshot_worker = ScreenshotWorker(self)
@@ -200,6 +181,7 @@ class ChatOverlay(QMainWindow):
         self.transformers_worker.moveToThread(self.transformers_thread)
         self.transformers_worker.model_loaded.connect(self.on_model_loaded)
         self.transformers_worker.analysis_complete.connect(self.on_analysis_complete)
+        self.transformers_worker.error_occurred.connect(self.on_error)
         self.transformers_thread.start()
 
     def initUI(self):
@@ -278,15 +260,6 @@ class ChatOverlay(QMainWindow):
 
         self.show()
 
-    def select_model(self):
-        model, ok = QInputDialog.getItem(self, "Select Model", "Choose a model:", ["KoboldCPP", "Transformers"], 0, False)
-        if ok:
-            if model == "KoboldCPP":
-                self.current_model = "koboldcpp"
-            else:
-                self.current_model = "transformers"
-
-
     def toggle_memory(self):
         self.memory_enabled = not self.memory_enabled
         if self.memory_enabled:
@@ -302,22 +275,9 @@ class ChatOverlay(QMainWindow):
             self.backend = "koboldcpp"
         else:
             self.backend = "transformers"
-            if not self.transformers_worker.model:
-                self.show_loading_dialog("Loading Transformers model...")
+            if not self.model_loaded:
+                self.waiting_indicator.setText("Loading Transformers model...")
                 QTimer.singleShot(100, self.transformers_worker.load_model)
-
-
-
-    def show_loading_dialog(self, message):
-        self.progress_dialog = QProgressDialog(message, None, 0, 0, self)
-        self.progress_dialog.setWindowModality(Qt.WindowModal)
-        self.progress_dialog.setWindowTitle("Please Wait")
-        self.progress_dialog.setCancelButton(None)
-        self.progress_dialog.show()
-
-    @pyqtSlot()
-    def on_model_loaded(self):
-        self.progress_dialog.close()
 
     def send_message(self):
         message = self.input_field.text()
@@ -333,7 +293,6 @@ class ChatOverlay(QMainWindow):
             
             self.take_screenshot()
 
-
     def take_screenshot(self):
         self.hide()
         QTimer.singleShot(50, self._take_and_process_screenshot)
@@ -341,6 +300,7 @@ class ChatOverlay(QMainWindow):
     def _take_and_process_screenshot(self):
         self.screenshot_worker.take_screenshot_signal.emit()
         self.show()
+
 
     @pyqtSlot(object)
     def process_screenshot(self, image):
@@ -356,16 +316,26 @@ class ChatOverlay(QMainWindow):
             response = analyze_image_with_koboldcpp(image, prompt)
             self.on_analysis_complete(response)
         else:
-            self.show_loading_dialog("Analyzing image...")
+            if not self.model_loaded:
+                self.waiting_indicator.setText("Model not loaded. Please wait and try again.")
+                return
+            self.waiting_indicator.setText("Analyzing image...")
             QTimer.singleShot(100, lambda: self.transformers_worker.analyze_image(image, prompt))
-        
-        self.waiting_indicator.clear()
+
+    @pyqtSlot()
+    def on_model_loaded(self):
+        self.model_loaded = True
+        self.waiting_indicator.setText("Transformers model loaded successfully.")
+        QTimer.singleShot(3000, lambda: self.waiting_indicator.clear())
+
+    @pyqtSlot(str)
+    def on_error(self, error_message):
+        self.waiting_indicator.setText(f"Error: {error_message}")
+        self.chat_display.append(f"<span style='color: red;'>Error:</span> {error_message}")
+        QTimer.singleShot(5000, lambda: self.waiting_indicator.clear())
 
     @pyqtSlot(str)
     def on_analysis_complete(self, response):
-        if hasattr(self, 'progress_dialog'):
-            self.progress_dialog.close()
-        
         self.chat_display.append(f"<span style='color: #5DADE2;'>AI:</span> {response}")
         
         if self.memory_enabled:
