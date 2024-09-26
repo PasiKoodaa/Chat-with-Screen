@@ -28,9 +28,9 @@ https://github.com/user-attachments/assets/2f16913b-2063-4039-8b53-4f7d8fe296e1
 - PyQt5
 - Pillow
 - requests
-- KoboldCPP server (for GGUF-models)
-- transformers (for Transformers models)
-- torch (for Transformers models)
+- KoboldCPP server (for gguf-models)
+- transformers (for Transformers-models)
+- torch (for Transformers-models)
 
 ## Installation
 
