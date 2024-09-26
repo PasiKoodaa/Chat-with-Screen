@@ -42,7 +42,7 @@ You can install Chat with Screen using either conda or pip. Choose the method th
 
 2. Create a new conda environment:
    ```
-   conda create -n chat-with-screen python=3.9
+   conda create -n chat-with-screen python==3.9
    ```
 
 3. Activate the environment:
