@@ -1,6 +1,6 @@
 # Chat with Screen
 
-Chat with Screen is a Python application that allows users to capture screenshots, analyze them using a KoboldCPP server, and engage in a chat-like interaction based on the analysis. The application features a translucent overlay interface for easy interaction with the underlying desktop.
+Chat with Screen is a Python application that allows users to capture screenshots, analyze captured screenshots using AI vision models. It supports both KoboldCPP and Transformers backends for image analysis (the default Transformers model is Molmo-7B-O). Users can engage in a chat-like interaction based on the analysis. The application features a translucent overlay interface for easy interaction with the underlying desktop.
 
 
 
@@ -28,7 +28,9 @@ https://github.com/user-attachments/assets/2f16913b-2063-4039-8b53-4f7d8fe296e1
 - PyQt5
 - Pillow
 - requests
-- KoboldCPP server (running separately)
+- KoboldCPP server (for GGUF-models)
+- transformers (for Transformers models)
+- torch (for Transformers models)
 
 ## Installation
 
