@@ -71,6 +71,7 @@ class TransformersModelWorker(QObject):
         self.model = None
         self.processor = None
 
+
     @pyqtSlot()
     def load_model(self):
         try:
@@ -156,6 +157,8 @@ class TransparentWidget(QWidget):
         painter.drawPath(path)
 
 class ChatOverlay(QMainWindow):
+    analyze_image_signal = pyqtSignal(object, str)
+
     def __init__(self):
         super().__init__()
         self.initUI()
@@ -182,7 +185,10 @@ class ChatOverlay(QMainWindow):
         self.transformers_worker.model_loaded.connect(self.on_model_loaded)
         self.transformers_worker.analysis_complete.connect(self.on_analysis_complete)
         self.transformers_worker.error_occurred.connect(self.on_error)
+        self.analyze_image_signal.connect(self.transformers_worker.analyze_image)
+        self.analysis_in_progress = False
         self.transformers_thread.start()
+
 
     def initUI(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
@@ -222,10 +228,10 @@ class ChatOverlay(QMainWindow):
         self.input_field.returnPressed.connect(self.send_message)
         input_layout.addWidget(self.input_field)
 
-        send_button = QPushButton("Send", self)
-        send_button.setStyleSheet("background-color: rgba(0, 122, 255, 0.7); color: white; border: none; border-radius: 5px; padding: 5px;")
-        send_button.clicked.connect(self.send_message)
-        input_layout.addWidget(send_button)
+        self.send_button = QPushButton("Send", self)
+        self.send_button.setStyleSheet("background-color: rgba(0, 122, 255, 0.7); color: white; border: none; border-radius: 5px; padding: 5px;")
+        self.send_button.clicked.connect(self.send_message)
+        input_layout.addWidget(self.send_button)
 
         layout.addLayout(input_layout)
 
@@ -280,11 +286,16 @@ class ChatOverlay(QMainWindow):
                 QTimer.singleShot(100, self.transformers_worker.load_model)
 
     def send_message(self):
+        if self.analysis_in_progress:
+            return
         message = self.input_field.text()
         if message:
             self.chat_display.append(f"<span style='color: #58D68D;'>You:</span> {message}")
             self.input_field.clear()
             self.waiting_indicator.setText("Waiting for AI response...")
+            self.analysis_in_progress = True
+            self.send_button.setEnabled(False)
+            self.send_button.setStyleSheet("background-color: rgba(0, 122, 255, 0.3); color: white; border: none; border-radius: 5px; padding: 5px;")
             
             if self.memory_enabled:
                 self.chat_history.append(f"User: {message}")
@@ -313,14 +324,24 @@ class ChatOverlay(QMainWindow):
             prompt = self.chat_display.toPlainText().split('\n')[-1]
         
         if self.backend == "koboldcpp":
-            response = analyze_image_with_koboldcpp(image, prompt)
-            self.on_analysis_complete(response)
+            self.waiting_indicator.setText("Analyzing image with KoboldCPP...")
+            QTimer.singleShot(100, lambda: self.process_koboldcpp(image, prompt))
         else:
             if not self.model_loaded:
                 self.waiting_indicator.setText("Model not loaded. Please wait and try again.")
+                self.analysis_in_progress = False
+                self.send_button.setEnabled(True)
+                self.send_button.setStyleSheet("background-color: rgba(0, 122, 255, 0.7); color: white; border: none; border-radius: 5px; padding: 5px;")
                 return
-            self.waiting_indicator.setText("Analyzing image...")
-            QTimer.singleShot(100, lambda: self.transformers_worker.analyze_image(image, prompt))
+            self.waiting_indicator.setText("Analyzing image with Transformers...")
+            self.analyze_image_signal.emit(image, prompt)
+
+    def process_koboldcpp(self, image, prompt):
+        try:
+            response = analyze_image_with_koboldcpp(image, prompt)
+            self.on_analysis_complete(response)
+        except Exception as e:
+            self.on_error(f"Error analyzing image with KoboldCPP: {str(e)}")
 
     @pyqtSlot()
     def on_model_loaded(self):
@@ -333,6 +354,9 @@ class ChatOverlay(QMainWindow):
         self.waiting_indicator.setText(f"Error: {error_message}")
         self.chat_display.append(f"<span style='color: red;'>Error:</span> {error_message}")
         QTimer.singleShot(5000, lambda: self.waiting_indicator.clear())
+        self.analysis_in_progress = False
+        self.send_button.setEnabled(True)
+        self.send_button.setStyleSheet("background-color: rgba(0, 122, 255, 0.7); color: white; border: none; border-radius: 5px; padding: 5px;")
 
     @pyqtSlot(str)
     def on_analysis_complete(self, response):
@@ -343,6 +367,12 @@ class ChatOverlay(QMainWindow):
             if len(self.chat_history) > 8:  # Keep only the last 4 pairs
                 self.chat_history = self.chat_history[-8:]
         
+        self.waiting_indicator.clear()
+        self.analysis_in_progress = False
+        self.send_button.setEnabled(True)
+        self.send_button.setStyleSheet("background-color: rgba(0, 122, 255, 0.7); color: white; border: none; border-radius: 5px; padding: 5px;")
+
+   
         self.waiting_indicator.clear()
 
     def select_region(self):
