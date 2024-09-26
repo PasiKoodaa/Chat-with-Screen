@@ -80,6 +80,8 @@ You can install Chat with Screen using either conda or pip. Choose the method th
    ```
    pip install -r requirements.txt
    ```
+5. Install torch if you use Transformers-models
+   https://pytorch.org/get-started/locally/
 
 ## Usage
 
