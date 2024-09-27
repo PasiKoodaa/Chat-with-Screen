@@ -81,7 +81,10 @@ You can install Chat with Screen using either conda or pip. Choose the method th
      ```
      venv\Scripts\activate
      ```
-
+   - On Linux:
+     ```
+     source venv/bin/activate
+     ```
 
 4. Install the required packages:
    ```
