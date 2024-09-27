@@ -3,7 +3,10 @@
 Chat with Screen is a Python application that allows users to capture screenshots, analyze captured screenshots using AI vision models. It supports both KoboldCPP and Transformers backends for image analysis (the default Transformers-model is Molmo-7B-O-0924). Users can engage in a chat-like interaction based on the analysis. The application features a translucent overlay interface for easy interaction with the underlying desktop.
 
 
-https://github.com/user-attachments/assets/452eae12-739b-4c52-bd8e-51aac5e75a7a
+
+
+https://github.com/user-attachments/assets/0497795d-da1e-4eb5-9e44-462b2b9a8123
+
 
 
 
