@@ -27,7 +27,7 @@ def resize_image(image, backend):
     if backend == "koboldcpp":
         MAX_PIXELS = 1_800_000
     else:
-        MAX_PIXELS = 350_000 # for Transformers-models, around 300_000 uses under 12GB VRAM with Molmo-7B
+        MAX_PIXELS = 350_000 # for Transformers-models, around 300_000 uses under 12GB VRAM with Molmo-7B-O-0924, but Molmo-7B-D (DEE not OOO) uses more VRAM
     print(backend)
     print("MAX_PIXELS is set to:",(MAX_PIXELS))
     current_pixels = image.width * image.height
