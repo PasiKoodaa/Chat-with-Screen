@@ -7,8 +7,8 @@ import base64
 import logging
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout, QWidget,
                              QHBoxLayout, QInputDialog, QTextEdit, QLineEdit, QSizePolicy, QMenu, QComboBox)
-from PyQt5.QtCore import Qt, QRect, QThread, QObject, pyqtSignal, pyqtSlot, QTimer
-from PyQt5.QtGui import QFont, QPainter, QPen, QPixmap, QColor, QPainterPath
+from PyQt5.QtCore import Qt, QRect, QThread, QObject, pyqtSignal, pyqtSlot, QTimer, QBuffer
+from PyQt5.QtGui import QFont, QPainter, QPen, QPixmap, QColor, QPainterPath, QImage
 
 from transformers import (
     AutoModelForCausalLM,
@@ -27,7 +27,7 @@ def resize_image(image, backend):
     if backend == "koboldcpp":
         MAX_PIXELS = 1_800_000
     else:
-        MAX_PIXELS = 350_000 # for Transformers-models, around 300_000 uses under 12GB VRAM with Molmo-7B-O-0924, but Molmo-7B-D (DEE not OOO) uses more VRAM
+        MAX_PIXELS = 300_000
     print(backend)
     print("MAX_PIXELS is set to:",(MAX_PIXELS))
     current_pixels = image.width * image.height
@@ -110,7 +110,7 @@ class TransformersModelWorker(QObject):
             
             output = self.model.generate_from_batch(
                 inputs,
-                GenerationConfig(max_new_tokens=200, stop_strings="<|endoftext|>"),
+                GenerationConfig(max_new_tokens=300, stop_strings="<|endoftext|>"),
                 tokenizer=self.processor.tokenizer,
             )
             
@@ -176,6 +176,7 @@ class ChatOverlay(QMainWindow):
         self.initUI()
         self.capture_region = None
         self.current_image = None
+        self.dropped_image = None  # New attribute to store the dropped image
         self.dragging = False
         self.selecting_region = False
         self.start_point = None
@@ -184,11 +185,12 @@ class ChatOverlay(QMainWindow):
         self.chat_history = []
         self.backend = "koboldcpp"
         self.model_loaded = False
+        self.using_dropped_image = False
 
         self.screenshot_thread = QThread()
         self.screenshot_worker = ScreenshotWorker(self)
         self.screenshot_worker.moveToThread(self.screenshot_thread)
-        self.screenshot_worker.screenshot_taken.connect(self.process_screenshot)
+        self.screenshot_worker.screenshot_taken.connect(self.process_image)
         self.screenshot_thread.start()
 
         self.transformers_thread = QThread()
@@ -276,6 +278,24 @@ class ChatOverlay(QMainWindow):
         self.backend_selector.currentTextChanged.connect(self.change_backend)
         layout.addWidget(self.backend_selector)
 
+        # Add drag and drop indicator and clear button
+        drag_drop_layout = QHBoxLayout()
+        self.drag_drop_indicator = QLabel("Drag and drop an image on GUI", self)
+        self.drag_drop_indicator.setStyleSheet("color: white; font-style: italic;")
+        self.drag_drop_indicator.setAlignment(Qt.AlignCenter)
+        drag_drop_layout.addWidget(self.drag_drop_indicator)
+
+        self.clear_image_button = QPushButton("Clear Image", self)
+        self.clear_image_button.setStyleSheet("background-color: rgba(255, 59, 48, 0.7); color: white; border: none; border-radius: 5px; padding: 5px;")
+        self.clear_image_button.clicked.connect(self.clear_dropped_image)
+        self.clear_image_button.hide()  # Initially hidden
+        drag_drop_layout.addWidget(self.clear_image_button)
+
+        layout.addLayout(drag_drop_layout)     
+
+        # Enable drag and drop
+        self.setAcceptDrops(True)  
+
         self.show()
 
     def toggle_memory(self):
@@ -316,17 +336,42 @@ class ChatOverlay(QMainWindow):
             
             self.take_screenshot()
 
+    def on_analysis_complete(self, response):
+        self.chat_display.append(f"<span style='color: #5DADE2;'>AI:</span> {response}")
+        
+        if self.memory_enabled:
+            self.chat_history.append(f"AI: {response}")
+            if len(self.chat_history) > 8:  # Keep only the last 4 pairs
+                self.chat_history = self.chat_history[-8:]
+        
+        self.waiting_indicator.clear()
+        self.analysis_in_progress = False
+        self.send_button.setEnabled(True)
+        self.send_button.setStyleSheet("background-color: rgba(0, 122, 255, 0.7); color: white; border: none; border-radius: 5px; padding: 5px;")
+
+
     def take_screenshot(self):
-        self.hide()
-        QTimer.singleShot(50, self._take_and_process_screenshot)
+        if not self.using_dropped_image:
+            self.hide()
+            QTimer.singleShot(50, self._take_and_process_screenshot)
+        else:
+            self.process_image(self.dropped_image)
 
     def _take_and_process_screenshot(self):
         self.screenshot_worker.take_screenshot_signal.emit()
         self.show()
 
 
+
     @pyqtSlot(object)
-    def process_screenshot(self, image):
+    def process_image(self, image):
+        if not self.using_dropped_image:
+            # If it's a screenshot, resize it here
+            image = resize_image(image, self.backend)
+        else:
+            # Use the stored dropped image
+            image = self.dropped_image
+        
         self.current_image = image
         
         if self.memory_enabled:
@@ -370,22 +415,8 @@ class ChatOverlay(QMainWindow):
         self.send_button.setEnabled(True)
         self.send_button.setStyleSheet("background-color: rgba(0, 122, 255, 0.7); color: white; border: none; border-radius: 5px; padding: 5px;")
 
-    @pyqtSlot(str)
-    def on_analysis_complete(self, response):
-        self.chat_display.append(f"<span style='color: #5DADE2;'>AI:</span> {response}")
-        
-        if self.memory_enabled:
-            self.chat_history.append(f"AI: {response}")
-            if len(self.chat_history) > 8:  # Keep only the last 4 pairs
-                self.chat_history = self.chat_history[-8:]
-        
-        self.waiting_indicator.clear()
-        self.analysis_in_progress = False
-        self.send_button.setEnabled(True)
-        self.send_button.setStyleSheet("background-color: rgba(0, 122, 255, 0.7); color: white; border: none; border-radius: 5px; padding: 5px;")
-
    
-        self.waiting_indicator.clear()
+
 
     def select_region(self):
         self.hide()
@@ -465,6 +496,44 @@ class ChatOverlay(QMainWindow):
             self.resize_overlay()
         elif action == close_action:
             QApplication.quit()
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasImage() or event.mimeData().hasUrls():
+            event.accept()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        if event.mimeData().hasImage():
+            self.handle_dropped_image(event.mimeData().imageData())
+        elif event.mimeData().hasUrls():
+            url = event.mimeData().urls()[0].toLocalFile()
+            self.handle_dropped_image(QImage(url))
+
+    def handle_dropped_image(self, qimage):
+        pil_image = self.qimage_to_pil(qimage)
+        resized_image = resize_image(pil_image, self.backend)
+        self.dropped_image = resized_image  # Store the dropped image
+        self.using_dropped_image = True
+        self.drag_drop_indicator.setText(f"Using dropped image (resized to {resized_image.width}x{resized_image.height})")
+        self.drag_drop_indicator.setStyleSheet("color: #58D68D; font-weight: bold;")
+        self.clear_image_button.show()
+
+    def clear_dropped_image(self):
+        self.dropped_image = None
+        self.using_dropped_image = False
+        self.drag_drop_indicator.setText("Drag and drop an image on GUI")
+        self.drag_drop_indicator.setStyleSheet("color: white; font-style: italic;")
+        self.clear_image_button.hide()
+        self.clear_image_button.hide()
+
+    def qimage_to_pil(self, qimage):
+        buffer = QBuffer()
+        buffer.open(QBuffer.ReadWrite)
+        qimage.save(buffer, "PNG")
+        pil_im = Image.open(io.BytesIO(buffer.data()))
+        return pil_im
+
 
 
 def main():
