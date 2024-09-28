@@ -20,6 +20,7 @@ https://github.com/user-attachments/assets/0497795d-da1e-4eb5-9e44-462b2b9a8123
 - Resizable overlay window
 - Right-click context menu for quick actions
 - Chat history memory option for contextual conversations
+- Drag and Drop for images
 
 ## Requirements
 
